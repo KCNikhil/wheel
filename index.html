@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Gesture Color Wheel</title>
+		<link rel="stylesheet" href="style.css" />
+
+		<script
+			src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+			crossorigin="anonymous"
+		></script>
+		<script
+			src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+			crossorigin="anonymous"
+		></script>
+		<script
+			src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+			crossorigin="anonymous"
+		></script>
+		<script
+			src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"
+			crossorigin="anonymous"
+		></script>
+	</head>
+	<body>
+		<div class="container">
+			<video class="input_video"></video>
+
+			<canvas class="output_canvas"></canvas>
+
+			<div id="loading">
+				<div class="spinner"></div>
+				<p id="status-text">Initializing AI Engine...</p>
+				<p class="subtext">Please allow camera access when prompted.</p>
+			</div>
+		</div>
+
+		<script src="script.js"></script>
+	</body>
+</html>
