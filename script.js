@@ -298,7 +298,7 @@ setTimeout(() => {
 			"Timeout",
 			"AI loading timed out.<br>Check your internet connection."
 		);
-}, 15000);
+}, 30000);
 
 function onResults(results) {
 	if (!hasLoaded) {
