@@ -23,10 +23,16 @@ const CONFIG = {
 	FRICTION: 0.985,
 	MIN_STOP_SPEED: 0.05,
 	MAX_SPIN_SPEED: 45,
+
+	// PINCH SETTINGS:
+	// 0.05 to start pinching (must be close)
+	// 0.08 to release pinching (can move slightly apart)
 	PINCH_START: 0.05,
 	PINCH_RELEASE: 0.08,
+
 	HAND_NEAR_WHEEL_RATIO: 1.4,
-	// RESIZED: Smaller button dimensions
+
+	// RESIZED UI: Smaller button
 	BUTTON: { w: 160, h: 55, offset: 80 },
 };
 
@@ -59,6 +65,8 @@ class ColorWheelState {
 			this.rotationAngle += this.spinVelocity;
 			this.rotationAngle %= 360;
 			this.spinVelocity *= CONFIG.FRICTION;
+
+			// Snap to stop
 			if (Math.abs(this.spinVelocity) < CONFIG.MIN_STOP_SPEED) {
 				this.isAutoSpinning = false;
 				this.spinVelocity = 0;
@@ -76,6 +84,7 @@ class ColorWheelState {
 	}
 }
 
+// --- LIBRARY CHECK ---
 if (
 	typeof window.Hands === "undefined" ||
 	typeof window.Camera === "undefined"
@@ -92,7 +101,7 @@ const canvasElement = document.querySelector(".output_canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const videoElement = document.querySelector(".input_video");
 
-// --- GEOMETRY ---
+// --- GEOMETRY HELPERS ---
 function distance(p1, p2) {
 	return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
 }
@@ -107,10 +116,10 @@ function getAngle(center, point) {
 
 // --- GRAPHICS ENGINE ---
 function drawWheel(ctx, width, height) {
-	// RESIZED: Moved slightly right (0.82) and made smaller radius
+	// POSITIONING: 82% to the right
 	const centerX = width * 0.82;
 	const centerY = height / 2;
-	// RESIZED: Denominator changed from 2.8 to 3.5 for smaller wheel
+	// RESIZED: Smaller wheel (height / 3.5)
 	const radius = Math.min(200, height / 3.5);
 
 	state.wheelCenter = { x: centerX, y: centerY };
@@ -123,20 +132,26 @@ function drawWheel(ctx, width, height) {
 	ctx.save();
 	ctx.translate(centerX, centerY);
 	ctx.rotate(rotationRad);
+
+	// Shadows
 	ctx.shadowColor = "rgba(0,0,0,0.5)";
 	ctx.shadowBlur = 20;
 	ctx.shadowOffsetX = 5;
 	ctx.shadowOffsetY = 5;
 
+	// Draw Segments
 	for (let i = 0; i < state.numColors; i++) {
 		ctx.beginPath();
 		ctx.moveTo(0, 0);
 		ctx.arc(0, 0, radius, i * anglePerSegment, (i + 1) * anglePerSegment);
+
+		// Glossy Gradient
 		const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
 		const hue = colors[i];
 		gradient.addColorStop(0, `hsl(${hue}, 100%, 40%)`);
 		gradient.addColorStop(0.8, `hsl(${hue}, 100%, 60%)`);
 		gradient.addColorStop(1, `hsl(${hue}, 100%, 30%)`);
+
 		ctx.fillStyle = gradient;
 		ctx.fill();
 		ctx.lineWidth = 2;
@@ -145,7 +160,7 @@ function drawWheel(ctx, width, height) {
 	}
 	ctx.restore();
 
-	// Hub
+	// Center Hub
 	ctx.beginPath();
 	ctx.arc(centerX, centerY, radius * 0.3, 0, 2 * Math.PI);
 	const hubGrad = ctx.createRadialGradient(
@@ -204,7 +219,8 @@ function drawSelectedColor(ctx, cx, r, colors) {
 	const anglePer = 360 / state.numColors;
 	const index = Math.floor(effectiveAngle / anglePer) % state.numColors;
 	const hue = colors[index];
-	// RESIZED: Selection box smaller
+
+	// Resized Box
 	const bx = cx - 80;
 	const by = 30;
 
@@ -252,6 +268,7 @@ function drawButton(ctx, cx, cy, r) {
 		ctx.shadowBlur = glow;
 	}
 
+	// Rounded Rectangle
 	ctx.beginPath();
 	const r_crn = 15;
 	ctx.moveTo(bx + r_crn, by);
@@ -290,60 +307,37 @@ function onResults(results) {
 		if (l) l.style.display = "none";
 	}
 
-	// Set canvas to window size
+	// Set Canvas Size
 	canvasElement.width = window.innerWidth;
 	canvasElement.height = window.innerHeight;
 	const w = canvasElement.width;
 	const h = canvasElement.height;
 
-	// --- FIX 1: CALCULATE ASPECT RATIO SCALING (COVER) ---
+	// --- VIDEO SCALING LOGIC (COVER) ---
 	const vidW = results.image.width;
 	const vidH = results.image.height;
-
-	// Calculate scale to cover the screen
 	const scale = Math.max(w / vidW, h / vidH);
 	const scaledW = vidW * scale;
 	const scaledH = vidH * scale;
-
-	// Center the video
 	const xOffset = (w - scaledW) / 2;
 	const yOffset = (h - scaledH) / 2;
 
-	// 1. DRAW MIRRORED VIDEO WITH SCALING
+	// 1. DRAW VIDEO (Mirrored & Centered)
 	canvasCtx.save();
-	canvasCtx.scale(-1, 1); // Mirror
-	canvasCtx.translate(-w, 0); // Move back into frame
-
-	// Draw image scaled to cover screen
-	// Note: because we are mirrored/translated, xOffset applies inversely in visual terms
-	// We draw at (w - (xOffset + scaledW)) effectively if we did manual math,
-	// but with context transforms we just draw normally at offset.
+	canvasCtx.translate(w / 2, h / 2);
+	canvasCtx.scale(-1, 1);
+	canvasCtx.translate(-w / 2, -h / 2);
 	canvasCtx.drawImage(results.image, xOffset, yOffset, scaledW, scaledH);
-
-	// Draw Skeleton (Scaled)
-	if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-		// We need to adjust landmarks rendering if we drew video with offset/scale?
-		// drawConnectors/drawLandmarks assumes 0-1 maps to full canvas.
-		// If we use them directly, they will stretch.
-		// For visual consistency with the "Cover" video, we should use manual drawing or manual mapping.
-		// MediaPipe utils don't support 'offset/scale' easily.
-		// Manual simple skeleton for perfect alignment:
-		// (Skipping utility draw for accuracy)
-	}
 	canvasCtx.restore();
 
-	// 2. UI LAYER (Normal Coordinates)
+	// 2. UI & LOGIC
 	state.updatePhysics();
 
 	if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
 		const landmarks = results.multiHandLandmarks[0];
 
-		// --- FIX 2: MAP LANDMARKS TO SCALED VIDEO ---
-		// Math:
-		// 1. Get Normalized X (0-1). Mirror it (1-x).
-		// 2. Multiply by the SCALED width.
-		// 3. Add the Offset (xOffset).
-
+		// --- COORDINATE MAPPING ---
+		// Map the 0-1 MediaPipe coordinates to our specific Scaled & Mirrored video
 		const indexFinger = {
 			x: xOffset + (1 - landmarks[8].x) * scaledW,
 			y: yOffset + landmarks[8].y * scaledH,
@@ -353,10 +347,9 @@ function onResults(results) {
 			y: yOffset + landmarks[4].y * scaledH,
 		};
 
-		// PINCH LOGIC
+		// --- PINCH LOGIC ---
 		const pinchDist = distance(indexFinger, thumb);
-		// Normalize pinch based on Scaled Width now
-		const normalizedPinch = pinchDist / scaledW;
+		const normalizedPinch = pinchDist / scaledW; // Relative to size
 
 		if (state.isPinching) {
 			if (normalizedPinch > CONFIG.PINCH_RELEASE) state.isPinching = false;
@@ -364,7 +357,7 @@ function onResults(results) {
 			if (normalizedPinch < CONFIG.PINCH_START) state.isPinching = true;
 		}
 
-		// Visual Connection
+		// Visual Connector
 		canvasCtx.beginPath();
 		canvasCtx.moveTo(indexFinger.x, indexFinger.y);
 		canvasCtx.lineTo(thumb.x, thumb.y);
@@ -374,7 +367,7 @@ function onResults(results) {
 			: "rgba(255,255,255,0.3)";
 		canvasCtx.stroke();
 
-		// BUTTON
+		// --- BUTTON INTERACTION ---
 		if (state.buttonRect) {
 			const btn = state.buttonRect;
 			const hit =
@@ -384,6 +377,7 @@ function onResults(results) {
 				indexFinger.y <= btn.y + btn.h + 20;
 
 			state.buttonState.hovered = hit;
+
 			if (
 				hit &&
 				state.isPinching &&
@@ -393,29 +387,39 @@ function onResults(results) {
 				state.buttonState.pressed = true;
 				state.startSpin();
 			}
-			if ((!hit || !state.isPinching) && !state.isAutoSpinning)
+			if ((!hit || !state.isPinching) && !state.isAutoSpinning) {
 				state.buttonState.pressed = false;
+			}
 		}
 
-		// WHEEL
+		// --- WHEEL INTERACTION (GRAB + BRAKE) ---
 		const distToCenter = distance(indexFinger, state.wheelCenter);
 		state.handNearWheel =
 			distToCenter < state.wheelRadius * CONFIG.HAND_NEAR_WHEEL_RATIO;
 
-		if (
-			state.handNearWheel &&
-			!state.buttonState.hovered &&
-			!state.isAutoSpinning
-		) {
+		if (state.handNearWheel && !state.buttonState.hovered) {
+			// BRAKING SYSTEM: Stop immediately if grabbed while spinning
+			if (state.isAutoSpinning) {
+				state.isAutoSpinning = false;
+				state.spinVelocity = 0;
+				state.buttonState.pressed = false;
+			}
+
+			// MANUAL ROTATION
 			const currentAngle = getAngle(state.wheelCenter, indexFinger);
+
+			// Ensure we have a previous angle to calculate delta
 			if (state.prevHandAngle !== null) {
 				let diff = currentAngle - state.prevHandAngle;
+				// Handle angle wrapping (-180 to 180)
 				if (diff > 180) diff -= 360;
 				if (diff < -180) diff += 360;
+
 				state.rotationAngle += diff;
 			}
 			state.prevHandAngle = currentAngle;
 
+			// Visual Elastic Line
 			canvasCtx.beginPath();
 			canvasCtx.moveTo(indexFinger.x, indexFinger.y);
 			canvasCtx.lineTo(state.wheelCenter.x, state.wheelCenter.y);
@@ -428,7 +432,7 @@ function onResults(results) {
 			state.prevHandAngle = null;
 		}
 
-		// CURSOR
+		// --- CURSOR DRAWING ---
 		canvasCtx.beginPath();
 		canvasCtx.arc(indexFinger.x, indexFinger.y, 15, 0, 2 * Math.PI);
 		canvasCtx.fillStyle = state.isPinching
@@ -443,7 +447,7 @@ function onResults(results) {
 	drawWheel(canvasCtx, w, h);
 }
 
-// --- SETUP ---
+// --- INITIALIZATION ---
 try {
 	const hands = new Hands({
 		locateFile: (file) =>
@@ -461,7 +465,7 @@ try {
 		onFrame: async () => {
 			await hands.send({ image: videoElement });
 		},
-		// Allow any resolution
+		// Note: Width/Height removed to allow auto-resolution
 	});
 	camera.start().catch((e) => showError("Camera Error", e));
 } catch (e) {
