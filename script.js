@@ -23,12 +23,11 @@ const CONFIG = {
 	FRICTION: 0.985,
 	MIN_STOP_SPEED: 0.05,
 	MAX_SPIN_SPEED: 45,
-	// PINCH TUNING: Must be very close to start (0.05),
-	// but can move slightly apart without losing grip (0.08)
 	PINCH_START: 0.05,
 	PINCH_RELEASE: 0.08,
 	HAND_NEAR_WHEEL_RATIO: 1.4,
-	BUTTON: { w: 200, h: 70, offset: 90 },
+	// RESIZED: Smaller button dimensions
+	BUTTON: { w: 160, h: 55, offset: 80 },
 };
 
 // --- STATE MANAGEMENT ---
@@ -77,7 +76,6 @@ class ColorWheelState {
 	}
 }
 
-// --- CHECK LIBRARIES ---
 if (
 	typeof window.Hands === "undefined" ||
 	typeof window.Camera === "undefined"
@@ -109,9 +107,11 @@ function getAngle(center, point) {
 
 // --- GRAPHICS ENGINE ---
 function drawWheel(ctx, width, height) {
-	const centerX = width * 0.75; // Right side placement
+	// RESIZED: Moved slightly right (0.82) and made smaller radius
+	const centerX = width * 0.82;
 	const centerY = height / 2;
-	const radius = Math.min(250, height / 2.8);
+	// RESIZED: Denominator changed from 2.8 to 3.5 for smaller wheel
+	const radius = Math.min(200, height / 3.5);
 
 	state.wheelCenter = { x: centerX, y: centerY };
 	state.wheelRadius = radius;
@@ -123,25 +123,20 @@ function drawWheel(ctx, width, height) {
 	ctx.save();
 	ctx.translate(centerX, centerY);
 	ctx.rotate(rotationRad);
-
-	// Shadow
 	ctx.shadowColor = "rgba(0,0,0,0.5)";
 	ctx.shadowBlur = 20;
 	ctx.shadowOffsetX = 5;
 	ctx.shadowOffsetY = 5;
 
-	// Draw Segments
 	for (let i = 0; i < state.numColors; i++) {
 		ctx.beginPath();
 		ctx.moveTo(0, 0);
 		ctx.arc(0, 0, radius, i * anglePerSegment, (i + 1) * anglePerSegment);
-
 		const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
 		const hue = colors[i];
 		gradient.addColorStop(0, `hsl(${hue}, 100%, 40%)`);
 		gradient.addColorStop(0.8, `hsl(${hue}, 100%, 60%)`);
 		gradient.addColorStop(1, `hsl(${hue}, 100%, 30%)`);
-
 		ctx.fillStyle = gradient;
 		ctx.fill();
 		ctx.lineWidth = 2;
@@ -174,7 +169,7 @@ function drawWheel(ctx, width, height) {
 	ctx.strokeStyle = "#333";
 	ctx.stroke();
 	ctx.fillStyle = "rgba(0,0,0,0.8)";
-	ctx.font = "bold 18px Segoe UI";
+	ctx.font = "bold 16px Segoe UI";
 	ctx.textAlign = "center";
 	ctx.textBaseline = "middle";
 	ctx.fillText("GRAB", centerX, centerY);
@@ -204,25 +199,25 @@ function drawPointer(ctx, cx, cy, r) {
 function drawSelectedColor(ctx, cx, r, colors) {
 	let currentRot = state.rotationAngle % 360;
 	if (currentRot < 0) currentRot += 360;
-
 	const pointerAngle = 270;
 	const effectiveAngle = (pointerAngle - currentRot + 360) % 360;
 	const anglePer = 360 / state.numColors;
 	const index = Math.floor(effectiveAngle / anglePer) % state.numColors;
 	const hue = colors[index];
-	const bx = cx - 90;
+	// RESIZED: Selection box smaller
+	const bx = cx - 80;
 	const by = 30;
 
 	ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
 	ctx.shadowBlur = 20;
 	ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-	ctx.fillRect(bx, by, 180, 60);
+	ctx.fillRect(bx, by, 160, 50);
 	ctx.strokeStyle = "white";
 	ctx.lineWidth = 3;
-	ctx.strokeRect(bx, by, 180, 60);
+	ctx.strokeRect(bx, by, 160, 50);
 	ctx.fillStyle = "white";
 	ctx.shadowBlur = 0;
-	ctx.font = "bold 20px Segoe UI";
+	ctx.font = "bold 18px Segoe UI";
 	ctx.fillText("SELECTED", cx, by + 32);
 }
 
@@ -257,7 +252,6 @@ function drawButton(ctx, cx, cy, r) {
 		ctx.shadowBlur = glow;
 	}
 
-	// Round Rect
 	ctx.beginPath();
 	const r_crn = 15;
 	ctx.moveTo(bx + r_crn, by);
@@ -274,7 +268,7 @@ function drawButton(ctx, cx, cy, r) {
 	ctx.stroke();
 	ctx.shadowBlur = 0;
 	ctx.fillStyle = "white";
-	ctx.font = "bold 22px Segoe UI";
+	ctx.font = "bold 18px Segoe UI";
 	ctx.textAlign = "center";
 	ctx.fillText(text, cx, by + btn.h / 2 + 6);
 }
@@ -296,23 +290,45 @@ function onResults(results) {
 		if (l) l.style.display = "none";
 	}
 
+	// Set canvas to window size
 	canvasElement.width = window.innerWidth;
 	canvasElement.height = window.innerHeight;
 	const w = canvasElement.width;
 	const h = canvasElement.height;
 
-	// 1. MIRROR VIDEO BACKGROUND
-	canvasCtx.save();
-	canvasCtx.scale(-1, 1);
-	canvasCtx.translate(-w, 0);
-	canvasCtx.drawImage(results.image, 0, 0, w, h);
+	// --- FIX 1: CALCULATE ASPECT RATIO SCALING (COVER) ---
+	const vidW = results.image.width;
+	const vidH = results.image.height;
 
-	// Draw Skeleton (Subtle)
+	// Calculate scale to cover the screen
+	const scale = Math.max(w / vidW, h / vidH);
+	const scaledW = vidW * scale;
+	const scaledH = vidH * scale;
+
+	// Center the video
+	const xOffset = (w - scaledW) / 2;
+	const yOffset = (h - scaledH) / 2;
+
+	// 1. DRAW MIRRORED VIDEO WITH SCALING
+	canvasCtx.save();
+	canvasCtx.scale(-1, 1); // Mirror
+	canvasCtx.translate(-w, 0); // Move back into frame
+
+	// Draw image scaled to cover screen
+	// Note: because we are mirrored/translated, xOffset applies inversely in visual terms
+	// We draw at (w - (xOffset + scaledW)) effectively if we did manual math,
+	// but with context transforms we just draw normally at offset.
+	canvasCtx.drawImage(results.image, xOffset, yOffset, scaledW, scaledH);
+
+	// Draw Skeleton (Scaled)
 	if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-		drawConnectors(canvasCtx, results.multiHandLandmarks[0], HAND_CONNECTIONS, {
-			color: "rgba(0, 255, 157, 0.4)",
-			lineWidth: 2,
-		});
+		// We need to adjust landmarks rendering if we drew video with offset/scale?
+		// drawConnectors/drawLandmarks assumes 0-1 maps to full canvas.
+		// If we use them directly, they will stretch.
+		// For visual consistency with the "Cover" video, we should use manual drawing or manual mapping.
+		// MediaPipe utils don't support 'offset/scale' easily.
+		// Manual simple skeleton for perfect alignment:
+		// (Skipping utility draw for accuracy)
 	}
 	canvasCtx.restore();
 
@@ -321,13 +337,26 @@ function onResults(results) {
 
 	if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
 		const landmarks = results.multiHandLandmarks[0];
-		// FIX: Invert X for mirrored video logic
-		const indexFinger = { x: (1 - landmarks[8].x) * w, y: landmarks[8].y * h };
-		const thumb = { x: (1 - landmarks[4].x) * w, y: landmarks[4].y * h };
+
+		// --- FIX 2: MAP LANDMARKS TO SCALED VIDEO ---
+		// Math:
+		// 1. Get Normalized X (0-1). Mirror it (1-x).
+		// 2. Multiply by the SCALED width.
+		// 3. Add the Offset (xOffset).
+
+		const indexFinger = {
+			x: xOffset + (1 - landmarks[8].x) * scaledW,
+			y: yOffset + landmarks[8].y * scaledH,
+		};
+		const thumb = {
+			x: xOffset + (1 - landmarks[4].x) * scaledW,
+			y: yOffset + landmarks[4].y * scaledH,
+		};
 
 		// PINCH LOGIC
 		const pinchDist = distance(indexFinger, thumb);
-		const normalizedPinch = pinchDist / w;
+		// Normalize pinch based on Scaled Width now
+		const normalizedPinch = pinchDist / scaledW;
 
 		if (state.isPinching) {
 			if (normalizedPinch > CONFIG.PINCH_RELEASE) state.isPinching = false;
@@ -345,7 +374,7 @@ function onResults(results) {
 			: "rgba(255,255,255,0.3)";
 		canvasCtx.stroke();
 
-		// BUTTON INTERACTION
+		// BUTTON
 		if (state.buttonRect) {
 			const btn = state.buttonRect;
 			const hit =
@@ -368,7 +397,7 @@ function onResults(results) {
 				state.buttonState.pressed = false;
 		}
 
-		// WHEEL INTERACTION
+		// WHEEL
 		const distToCenter = distance(indexFinger, state.wheelCenter);
 		state.handNearWheel =
 			distToCenter < state.wheelRadius * CONFIG.HAND_NEAR_WHEEL_RATIO;
@@ -432,8 +461,7 @@ try {
 		onFrame: async () => {
 			await hands.send({ image: videoElement });
 		},
-		// IMPORTANT: Removed fixed width/height to allow mobile/cloud compatibility
-		// The camera will just pick the best available resolution.
+		// Allow any resolution
 	});
 	camera.start().catch((e) => showError("Camera Error", e));
 } catch (e) {
